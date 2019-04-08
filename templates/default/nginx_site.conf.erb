@@ -1,0 +1,135 @@
+server {
+    <% if @protocol == 'https' %>
+    listen <%= @params['secure_port'] %> ssl;
+    <% else %>
+    listen <%= @params['insecure_port'] %>;
+    <% end %>
+
+    root <%= @params['docroot']%>;
+    index index.html;
+
+    <% if @protocol == 'https' %>
+
+    ssl_certificate     <%= @params['ssl']['certfile'] %>;
+    ssl_certificate_key <%= @params['ssl']['keyfile'] %>;
+    ssl_session_timeout 7m;
+    ssl_protocols <%= @params['ssl']['protocols'] %>;
+    ssl_ciphers <%= @params['ssl']['ciphersuite'] %>
+    ssl_prefer_server_ciphers on;
+
+    <% end %>
+    <% if @params['server_params'] %>
+        <% @params['server_params'].each do |key, value| %>
+    <%= key %> <%= value %>;
+        <% end %>
+    <% end %>
+
+    server_name <%= [ @params['server_name'] ].concat(@params['server_aliases'] ? @params['server_aliases'] : []).join(" ")%>;
+
+<% if @params['http_auth']['type'] == 'basic' %>
+    satisfy any;
+    auth_basic "<%= @params['http_auth']['realm'] %>";
+    auth_basic_user_file <%= @params['http_auth']['file'] || "/etc/nginx/htpasswd.#{@site_name}" %>;
+<% end %>
+<%= @params['allow_from'] ? @params['allow_from'].map { |ip| "    allow #{ip};" }.join("\n") : '' %>
+<%= @params['allow_from'] || @params['http_auth']['type'] != 'none' ? '    deny all;' : '' %>
+
+    <% (@params['restricted_dirs'] || []).each do |dir| %>
+    location ^~ <%= dir %> { deny all; }
+    <% end %>
+
+    <% (@params['static_dirs'] || []).each do |dir| %>
+    location ^~ <%= dir %> { }
+    <% end %>
+
+    <% Hash[(@params['locations'] || {}).sort.reverse].each do |location, data|
+      next unless data
+      data = {'mode' => data } unless data.is_a?(Hash)
+
+      if data['type'].nil? || data['type'] == 'path'
+        location = "~ ^#{Regexp.escape(location)}(/|$)"
+      elsif data['type'] == 'regex'
+        location = "~ #{location}"
+      end -%>
+    location <%= location %> {<%
+      case data['mode']
+      when 'restricted' %>
+        deny all;<%
+      when 'reverse-proxy'
+        %>
+        <% if data['proxy']['preserve_scheme'] -%>
+        proxy_pass $scheme://<%= data['proxy']['location'].sub(%r{^[a-z0-9]+://}, '') %>;
+        <% else -%>
+        proxy_pass <%= data['proxy']['location'] %>;
+        <% end -%>
+        <% if data['proxy']['preserve_host'] -%>
+        proxy_set_header Host $host;
+        <% end -%>
+        <% unless data['proxy']['exclude_x_forwarded_for'] -%>
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        <% end -%>
+        <% unless data['proxy']['exclude_self'] -%>
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        <% end
+      end
+      if data['server_params'] -%>
+        <% data['server_params'].each do |key, value| -%>
+    <%= key %> <%= value %>;
+        <% end
+      end -%>
+    }
+    <% end %>
+
+    <% (@params['includes_first'] || []).each do |file| %>
+    include <%= file %>;
+    <% end %>
+
+    <% unless @params['disable_default_location_block'] %>
+    location / {
+        <% if @params['endpoint'] and not @params['endpoint'].empty? %>
+            <% if @params['endpoint'].end_with? ".html" %>
+                try_files $uri <%= @params['endpoint'] %>;
+            <% else %>
+                try_files $uri @rewriteapp;
+            <% end %>
+        <% end %>
+    }
+    <% end %>
+
+    <% if @params['php_support'] %>
+    location @rewriteapp {
+        rewrite ^(.*)$ /<%= @params['endpoint'] %>/$1 last;
+    }
+
+    location ~ \.php {
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        include fastcgi_params;
+
+        <% if @params['realpath_document_root'] %>
+        fastcgi_param PATH_TRANSLATED $realpath_root$fastcgi_path_info;
+        <% else %>
+        fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+        <% end %>
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTPS $https;
+        <% if @params['request_header_proxy_hide'] -%>
+        fastcgi_param HTTP_PROXY "";
+        <% end -%>
+
+        <% (@params['php_server_variables'] || []).each do |header, value| %>
+        fastcgi_param <%= header %> <%= value %>;
+        <% end %>
+
+        fastcgi_pass <%= @params['php-fpm']['listen'] == "socket" ? "unix:#{@params['php-fpm']['socket']}" : "#{@params['php-fpm']['host']}:#{@params['php-fpm']['port']}" %>;
+    }
+    <% end %>
+
+    error_log /var/log/nginx/<%= @params['server_name'] %>_error.log;
+    access_log /var/log/nginx/<%= @params['server_name'] %>_access.log;
+
+    <% (@params['includes_last'] || @params['includes'] || []).each do |file| %>
+    include <%= file %>;
+    <% end %>
+}
