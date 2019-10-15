@@ -53,9 +53,7 @@ protocols = {
   site['disable_default_location_block'] = false
 end
 
-default['iptables-standard']['allowed_incoming_ports'] = {
-  "ssh" => "ssh"
-}
+default['iptables-standard']['allowed_incoming_ports'] = {}
 
 default['mysql']['connections']['default'] = {
   :username => "root",
