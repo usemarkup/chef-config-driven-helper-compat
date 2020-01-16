@@ -64,6 +64,10 @@ node['iptables-ng']['enabled_ip_versions'].each do |version|
   end
 end
 
+service 'iptables' do
+  action :restart
+end
+
 begin
   f2b_service = resources(:service => 'fail2ban')
   f2b_service.subscribes :restart, 'ruby_block[restart_iptables]', :delayed
