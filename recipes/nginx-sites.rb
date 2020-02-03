@@ -55,7 +55,7 @@ node['nginx']['sites'].each do |name, site_attrs|
 
     self.send "#{type}_site", name do
       if defined? site['enabled']
-        case site[enabled]
+        case site['enabled']
         when true
           action :enable
         else
