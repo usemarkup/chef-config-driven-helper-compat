@@ -54,11 +54,11 @@ node['nginx']['sites'].each do |name, site_attrs|
     end if protocol == 'https'
 
     self.send "#{type}_site", name do
-      if defined? site['enable'] && !site['enable']
-        action :disable
-      else
+      #if defined? site['enable'] && !site['enable']
+      #  action :disable
+      #else
         action :enable
-      end  
+      #end  
     end
   end
 
