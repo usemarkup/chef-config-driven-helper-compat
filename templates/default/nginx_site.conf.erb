@@ -129,6 +129,8 @@ server {
     error_log /var/log/nginx/<%= @params['server_name'] %>_error.log;
     access_log /var/log/nginx/<%= @params['server_name'] %>_access.log;
 
+    client_max_body_size 32M;
+
     <% (@params['includes_last'] || @params['includes'] || []).each do |file| %>
     include <%= file %>;
     <% end %>
